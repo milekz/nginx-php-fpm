@@ -1,6 +1,4 @@
-FROM php:7.2.4-fpm-alpine
-
-LABEL maintainer="Ric Harvey <ric@ngd.io>"
+FROM php:7.1.19-fpm-alpine
 
 ENV php_conf /usr/local/etc/php-fpm.conf
 ENV fpm_conf /usr/local/etc/php-fpm.d/www.conf
@@ -64,6 +62,7 @@ RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
     --with-http_v2_module \
     --add-module=/usr/src/ngx_devel_kit-$DEVEL_KIT_MODULE_VERSION \
     --add-module=/usr/src/lua-nginx-module-$LUA_MODULE_VERSION \
+    --add-module=/usr/src/nginx-rtmp-module  \
   " \
   && addgroup -S nginx \
   && adduser -D -S -h /var/cache/nginx -s /sbin/nologin -G nginx nginx \ 
@@ -72,12 +71,13 @@ RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
     gcc \
     libc-dev \
     make \
-    openssl-dev \
+    libressl-dev \
     pcre-dev \
     zlib-dev \
     linux-headers \
     curl \
     gnupg \
+    git\
     libxslt-dev \
     gd-dev \
     geoip-dev \
@@ -87,6 +87,7 @@ RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
   && curl -fSL http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz.asc  -o nginx.tar.gz.asc \
   && curl -fSL https://github.com/simpl/ngx_devel_kit/archive/v$DEVEL_KIT_MODULE_VERSION.tar.gz -o ndk.tar.gz \
   && curl -fSL https://github.com/openresty/lua-nginx-module/archive/v$LUA_MODULE_VERSION.tar.gz -o lua.tar.gz \
+  && git clone https://github.com/arut/nginx-rtmp-module.git /usr/src/nginx-rtmp-module  \
   && export GNUPGHOME="$(mktemp -d)" \
   && found=''; \
   for server in \
@@ -159,8 +160,9 @@ RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
 
 RUN echo @testing http://nl.alpinelinux.org/alpine/edge/testing >> /etc/apk/repositories && \
     echo /etc/apk/respositories && \
-    apk update && \
-    apk add --no-cache bash \
+    apk update && apk upgrade &&\
+    apk add --no-cache \
+    bash \
     openssh-client \
     wget \
     supervisor \
@@ -171,7 +173,7 @@ RUN echo @testing http://nl.alpinelinux.org/alpine/edge/testing >> /etc/apk/repo
     python-dev \
     py-pip \
     augeas-dev \
-    openssl-dev \
+    libressl-dev \
     ca-certificates \
     dialog \
     autoconf \
@@ -195,8 +197,9 @@ RUN echo @testing http://nl.alpinelinux.org/alpine/edge/testing >> /etc/apk/repo
       --with-jpeg-dir=/usr/include/ && \
     #curl iconv session
     #docker-php-ext-install pdo_mysql pdo_sqlite mysqli mcrypt gd exif intl xsl json soap dom zip opcache && \
+#    docker-php-ext-install iconv pdo_mysql pdo_sqlite mysqli gd exif intl xsl json soap dom zip opcache imap mbstring mcrypt snmp ftp bz2 bcmath calendar gettext hash && \
     docker-php-ext-install iconv pdo_mysql pdo_sqlite mysqli gd exif intl xsl json soap dom zip opcache && \
-    #pecl install xdebug && \
+    pecl install xdebug-2.6.0 && \
     docker-php-source delete && \
     mkdir -p /etc/nginx && \
     mkdir -p /var/www/app && \
@@ -211,6 +214,7 @@ RUN echo @testing http://nl.alpinelinux.org/alpine/edge/testing >> /etc/apk/repo
     pip install -U certbot && \
     mkdir -p /etc/letsencrypt/webrootauth && \
     apk del gcc musl-dev linux-headers libffi-dev augeas-dev python-dev make autoconf
+#    apk del .sys-deps
 #    ln -s /usr/bin/php7 /usr/bin/php
 
 ADD conf/supervisord.conf /etc/supervisord.conf
@@ -253,6 +257,9 @@ RUN echo "cgi.fix_pathinfo=0" > ${php_vars} &&\
 #    ln -s /etc/php7/php.ini /etc/php7/conf.d/php.ini && \
 #    find /etc/php7/conf.d/ -name "*.ini" -exec sed -i -re 's/^(\s*)#(.*)/\1;\2/g' {} \;
 
+RUN set -ex \
+  && apk --no-cache add \
+  postgresql-dev openldap-dev net-snmp-dev  &&  docker-php-ext-install pdo_pgsql pgsql ldap bcmath pcntl snmp
 
 # Add Scripts
 ADD scripts/start.sh /start.sh
@@ -269,4 +276,5 @@ ADD errors/ /var/www/errors
 
 EXPOSE 443 80
 
+WORKDIR "/var/www/html"
 CMD ["/start.sh"]
